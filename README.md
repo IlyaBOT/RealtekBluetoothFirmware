@@ -15,10 +15,12 @@ is published. Previous USB/HCI synchronization and transfer-error fixes are
 included.
 
 Runtime testing confirmed the external-controller path and device discovery.
-The tester also confirmed headphone pairing and audio playback. Sleep/wake,
-cold starts, reconnects, microphone/SCO audio and other adapter models remain
-unverified. This is an experimental build, not a claim of complete macOS
-Bluetooth compatibility.
+The tester also confirmed headphone pairing, audio playback and headset
+microphone input. Playback quality drops while the headset microphone is active
+and recovers when it is released, consistent with the expected Bluetooth voice
+mode switch. The negotiated voice profile/codec was not captured. Sleep/wake,
+cold starts, reconnects and other adapter models remain unverified. This is an
+experimental build, not a claim of complete macOS Bluetooth compatibility.
 
 See [A728 Sequoia notes](docs/A728-Sequoia.md) for the changes, test scope,
 build instructions and a separate-EFI test procedure. Use only one Realtek

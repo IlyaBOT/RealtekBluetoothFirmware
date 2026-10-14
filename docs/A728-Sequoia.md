@@ -78,12 +78,16 @@ packets and upload traffic were not captured.
 During an initial observation of about six minutes, the previous HCI/VSC failure
 and restart messages were absent, and launchd reported one bluetoothd run with
 no exit. The tester saw nearby devices, then confirmed successful headphone
-pairing and audio playback. This does not identify the negotiated audio codec
-or validate every Bluetooth profile.
+pairing, audio playback and input from the Bluetooth headset microphone.
+Playback quality drops while the microphone is in use and returns to normal
+when it is released. This matches the two-mode behavior described by
+[Apple](https://support.apple.com/en-us/102217). The exact negotiated voice
+profile, codec and SCO/eSCO transport were not captured, and microphone quality
+was not measured. This functional test does not validate every Bluetooth profile.
 
 The total boot-time improvement was not measured under controlled conditions.
-Cold/warm-start behavior, radio power cycling, reconnects, microphone/SCO,
-sleep/wake, long-duration stability and other chipsets still need testing.
+Cold/warm-start behavior, radio power cycling, reconnects, sleep/wake,
+long-duration stability and other chipsets still need testing.
 
 ## NVRAM observations
 
