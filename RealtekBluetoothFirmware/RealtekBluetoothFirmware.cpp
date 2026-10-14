@@ -11,6 +11,7 @@
 #include <libkern/OSKextLib.h>
 #include <libkern/version.h>
 #include <libkern/OSTypes.h>
+#include <libkern/c++/OSBoolean.h>
 #include <IOKit/usb/StandardUSB.h>
 #include "Hci.h"
 #include "Log.h"
@@ -104,18 +105,32 @@ bool RealtekBluetoothFirmware::start(IOService *provider)
     }
 
     m_pBTRtl->getFirmwareName(fwName, sizeof(fwName));
-    publishReg(true, fwName);
+    // The provider remains valid for this start() call. Release the firmware
+    // loader's interface/device ownership before publishing readiness.
+    IOUSBHostDevice *device = m_pDevice;
     cleanUp();
+    publishReg(device, true, fwName);
     return true;
 }
 
-void RealtekBluetoothFirmware::publishReg(bool isSucceed, const char *fwName)
+void RealtekBluetoothFirmware::publishReg(IOUSBHostDevice *device, bool isSucceed, const char *fwName)
 {
-    m_pDevice->setProperty("FirmwareLoaded", isSucceed);
+    OSBoolean *external = OSDynamicCast(OSBoolean, getProperty("RealtekExternalController"));
+    const bool useExternal = external && external->isTrue();
     if (isSucceed)
-        setProperty("fw_name", OSString::withCString(fwName));
-    if (version_major >= 21)
-        m_pDevice->setName("Bluetooth USB Host Controller");
+        setProperty("fw_name", fwName);
+    setProperty("handoff_mode", useExternal ? "external" : "legacy-internal-name");
+    // External personalities preserve both the descriptor-derived registry
+    // name and USB Product Name so bluetoothd can select THIRD_PARTY_DONGLE.
+    // Keep the previous behavior for all personalities that do not opt in.
+    if (version_major >= 21 && !useExternal) {
+        device->setName("Bluetooth USB Host Controller");
+        // Sequoia's bluetoothd reads this property, not the registry entry name,
+        // when selecting the internal USB controller in GetProductAndVendorID.
+        if (version_major >= 24 && isSucceed)
+            device->setProperty("USB Product Name", "Bluetooth USB Host Controller");
+    }
+    device->setProperty("FirmwareLoaded", isSucceed);
 }
 
 void RealtekBluetoothFirmware::cleanUp()

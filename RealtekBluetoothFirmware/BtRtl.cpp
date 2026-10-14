@@ -287,9 +287,12 @@ downloadFirmware(const uint8_t *data, uint32_t fwLen)
     }
 
     HciRpReadLocalVersion ver;
-    if (readLocalVersion(&ver))
-        XYLog("post-download version: hci_rev %04x lmp_subver %04x\n",
-              ver.hci_rev, ver.lmp_subver);
+    if (!readLocalVersion(&ver)) {
+        XYLog("post-download version read failed\n");
+        return false;
+    }
+    XYLog("post-download version: hci_rev %04x lmp_subver %04x\n",
+          ver.hci_rev, ver.lmp_subver);
     return true;
 }
 

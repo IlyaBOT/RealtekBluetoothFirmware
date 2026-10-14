@@ -20,8 +20,9 @@
 #include "Hci.h"
 
 typedef struct {
-    int status;
+    IOReturn status;
     uint32_t dataLen;
+    bool completed;
 } InterruptResp;
 
 class USBDeviceController : public OSObject {

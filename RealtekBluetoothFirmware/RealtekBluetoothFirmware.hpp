@@ -32,7 +32,7 @@ public:
     IOReturn setPowerState(unsigned long powerStateOrdinal, IOService *whatDevice) override;
 
     void cleanUp();
-    void publishReg(bool isSucceed, const char *fwName);
+    void publishReg(IOUSBHostDevice *device, bool isSucceed, const char *fwName);
 
 private:
     BtRtl           *m_pBTRtl;
