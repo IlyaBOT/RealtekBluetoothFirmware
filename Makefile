@@ -7,7 +7,7 @@
 
 KEXT_NAME    := RealtekBluetoothFirmware
 BUNDLE_ID    := org.thegwchr.RealtekBluetoothFirmware
-VERSION      := 1.0.0
+VERSION      := 1.0.3d2
 ARCH         := x86_64
 
 SDK          := $(shell xcrun --sdk macosx --show-sdk-path)
@@ -49,10 +49,22 @@ LDFLAGS      := -arch $(ARCH) -isysroot $(SDK) -nostdlib -fapple-kext \
 all: $(KEXT)
 
 # Host-side unit test of the firmware parser (userland, not a kext).
-test: tests/fw_parse_test.cpp RealtekBluetoothFirmware/RtlFwParse.h
+test: tests/fw_parse_test.cpp RealtekBluetoothFirmware/RtlFwParse.h tests/usb_interrupt_test.cpp tests/publish_handoff_test.cpp tests/download_completion_test.cpp tests/handoff_lifecycle_test.cpp scripts/extract_usb_test_methods.py $(SRCDIR)/USBDeviceController.cpp $(SRCDIR)/RealtekBluetoothFirmware.cpp $(SRCDIR)/BtRtl.cpp
 	@mkdir -p $(BUILD)
 	xcrun clang++ -std=c++14 -Wall -Wextra -O2 -o $(BUILD)/fw_parse_test tests/fw_parse_test.cpp
 	@./$(BUILD)/fw_parse_test fw
+	python3 scripts/extract_usb_test_methods.py $(SRCDIR)/USBDeviceController.cpp $(BUILD)/usb_interrupt_methods.inc
+	xcrun clang++ -std=c++14 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -I$(BUILD) -o $(BUILD)/usb_interrupt_test tests/usb_interrupt_test.cpp
+	@./$(BUILD)/usb_interrupt_test
+	python3 scripts/extract_usb_test_methods.py $(SRCDIR)/RealtekBluetoothFirmware.cpp $(BUILD)/publish_handoff_method.inc
+	xcrun clang++ -std=c++14 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -I$(BUILD) -o $(BUILD)/publish_handoff_test tests/publish_handoff_test.cpp
+	@./$(BUILD)/publish_handoff_test
+	python3 scripts/extract_usb_test_methods.py $(SRCDIR)/BtRtl.cpp $(BUILD)/download_firmware_method.inc
+	xcrun clang++ -std=c++14 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -I$(BUILD) -o $(BUILD)/download_completion_test tests/download_completion_test.cpp
+	@./$(BUILD)/download_completion_test
+	python3 scripts/extract_usb_test_methods.py $(SRCDIR)/RealtekBluetoothFirmware.cpp $(BUILD)/handoff_lifecycle_methods.inc --lifecycle
+	xcrun clang++ -std=c++14 -Wall -Wextra -Werror -O1 -g -fsanitize=address,undefined -I$(BUILD) -o $(BUILD)/handoff_lifecycle_test tests/handoff_lifecycle_test.cpp
+	@./$(BUILD)/handoff_lifecycle_test
 
 $(OBJ):
 	@mkdir -p $(OBJ)

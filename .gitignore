@@ -1,5 +1,6 @@
 build/
+build-*/
 reference/
 *.o
 .DS_Store
-tests/
+# Keep host-side regression tests in source control.

@@ -217,17 +217,18 @@ interruptHandler(void *owner, void *parameter, IOReturn status, uint32_t bytesTr
     switch (status) {
         case kIOReturnSuccess:
             break;
-        case kIOReturnNotResponding:
-            controller->m_pInterruptReadPipe->clearStall(false);
         default:
             XYLog("%s status: %s (%d) len: %d\n", __FUNCTION__, controller->stringFromReturn(status), status, bytesTransferred);
             break;
     }
     
     InterruptResp *resp = (InterruptResp *)parameter;
+    IOLockLock(controller->_hciLock);
     resp->status = status;
     resp->dataLen = bytesTransferred;
+    resp->completed = true;
     IOLockWakeup(controller->_hciLock, controller, true);
+    IOLockUnlock(controller->_hciLock);
 }
 
 IOReturn USBDeviceController::
@@ -239,6 +240,8 @@ interruptPipeRead(void *buf, uint32_t buf_size, uint32_t *size, uint32_t timeout
     
     clock_interval_to_deadline(timeout, kMillisecondScale, reinterpret_cast<uint64_t*> (&deadline));
     memset(&interrupResp, 0, sizeof(interrupResp));
+    if (size)
+        *size = 0;
     comple.action = interruptHandler;
     comple.owner = this;
     comple.parameter = &interrupResp;
@@ -251,11 +254,23 @@ interruptPipeRead(void *buf, uint32_t buf_size, uint32_t *size, uint32_t timeout
     
     if (ret == kIOReturnSuccess) {
         IOLockLock(_hciLock);
-        if (IOLockSleepDeadline(_hciLock, this, deadline, THREAD_INTERRUPTIBLE) != THREAD_AWAKENED) {
+        // Completion can arrive before the caller starts sleeping. Both the
+        // callback and waiter protect this predicate with the same lock.
+        while (!interrupResp.completed) {
+            int waitResult = IOLockSleepDeadline(_hciLock, this, deadline, THREAD_INTERRUPTIBLE);
+            if (!interrupResp.completed && waitResult != THREAD_AWAKENED) {
+                IOLockUnlock(_hciLock);
+                // The callback parameter lives on this stack. Drain the aborted
+                // transfer before returning or releasing its buffer/lock.
+                m_pInterruptReadPipe->abort(IOUSBHostIOSource::kAbortSynchronous);
+                XYLog("%s wait failed: %d\n", __FUNCTION__, waitResult);
+                return waitResult == THREAD_TIMED_OUT ? kIOReturnTimeout : kIOReturnAborted;
+            }
+        }
+        ret = interrupResp.status;
+        if (ret != kIOReturnSuccess) {
             IOLockUnlock(_hciLock);
-            m_pInterruptReadPipe->abort();
-            XYLog("%s Timeout\n", __FUNCTION__);
-            return kIOReturnTimeout;
+            return ret;
         }
         if (interrupResp.dataLen <= 0) {
             IOLockUnlock(_hciLock);
@@ -264,6 +279,8 @@ interruptPipeRead(void *buf, uint32_t buf_size, uint32_t *size, uint32_t timeout
         }
         if (buf && interrupResp.dataLen > buf_size) {
             XYLog("%s buf size too small. buflen: %d act: %d\n", __FUNCTION__, buf_size, interrupResp.dataLen);
+            IOLockUnlock(_hciLock);
+            return kIOReturnNoSpace;
         }
         if (buf) {
             memcpy(buf, mReadBuffer->getBytesNoCopy(), min(interrupResp.dataLen, buf_size));
@@ -281,7 +298,7 @@ interruptPipeRead(void *buf, uint32_t buf_size, uint32_t *size, uint32_t timeout
 IOReturn USBDeviceController::
 sendHCIRequest(HciCommandHdr *cmd, uint32_t timeout)
 {
-    uint32_t actualLength;
+    uint32_t actualLength = 0;
     StandardUSB::DeviceRequest request =
     {
         .bmRequestType = makeDeviceRequestbmRequestType(kRequestDirectionOut, kRequestTypeClass, kRequestRecipientDevice),
@@ -291,7 +308,12 @@ sendHCIRequest(HciCommandHdr *cmd, uint32_t timeout)
         .wLength = (uint16_t)(HCI_COMMAND_HDR_SIZE + cmd->len)
     };
     
-    return m_pInterface->deviceRequest(request, cmd, actualLength, timeout);
+    IOReturn ret = m_pInterface->deviceRequest(request, cmd, actualLength, timeout);
+    if (ret == kIOReturnSuccess && actualLength != request.wLength) {
+        XYLog("short HCI control transfer: %u/%u bytes\n", actualLength, request.wLength);
+        return kIOReturnUnderrun;
+    }
+    return ret;
 }
 
 IOReturn USBDeviceController::
